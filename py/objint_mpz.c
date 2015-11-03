@@ -44,23 +44,34 @@
 #if MICROPY_PY_SYS_MAXSIZE
 // Export value for sys.maxsize
 #define DIG_MASK ((MPZ_LONG_1 << MPZ_DIG_SIZE) - 1)
-STATIC const mpz_dig_t maxsize_dig[MPZ_NUM_DIG_FOR_INT] = {
+STATIC const mpz_dig_t maxsize_dig[] = {
+    #define NUM_DIG 1
     (MP_SSIZE_MAX >> MPZ_DIG_SIZE * 0) & DIG_MASK,
     #if (MP_SSIZE_MAX >> MPZ_DIG_SIZE * 0) > DIG_MASK
-    (MP_SSIZE_MAX >> MPZ_DIG_SIZE * 1) & DIG_MASK,
-    #if (MP_SSIZE_MAX >> MPZ_DIG_SIZE * 1) > DIG_MASK
-    (MP_SSIZE_MAX >> MPZ_DIG_SIZE * 2) & DIG_MASK,
-    (MP_SSIZE_MAX >> MPZ_DIG_SIZE * 3) & DIG_MASK,
-    (MP_SSIZE_MAX >> MPZ_DIG_SIZE * 4) & DIG_MASK,
-//    (MP_SSIZE_MAX >> MPZ_DIG_SIZE * 5) & DIG_MASK,
-    #endif
+     #undef NUM_DIG
+     #define NUM_DIG 2
+     (MP_SSIZE_MAX >> MPZ_DIG_SIZE * 1) & DIG_MASK,
+     #if (MP_SSIZE_MAX >> MPZ_DIG_SIZE * 1) > DIG_MASK
+      #undef NUM_DIG
+      #define NUM_DIG 3
+      (MP_SSIZE_MAX >> MPZ_DIG_SIZE * 2) & DIG_MASK,
+      #if (MP_SSIZE_MAX >> MPZ_DIG_SIZE * 2) > DIG_MASK
+       #undef NUM_DIG
+       #define NUM_DIG 4
+       (MP_SSIZE_MAX >> MPZ_DIG_SIZE * 3) & DIG_MASK,
+       #if (MP_SSIZE_MAX >> MPZ_DIG_SIZE * 3) > DIG_MASK
+        #error cannot encode MP_SSIZE_MAX as mpz
+       #endif
+      #endif
+     #endif
     #endif
 };
 const mp_obj_int_t mp_maxsize_obj = {
     {&mp_type_int},
-    {.fixed_dig = 1, .len = MPZ_NUM_DIG_FOR_INT, .alloc = MPZ_NUM_DIG_FOR_INT, .dig = (mpz_dig_t*)maxsize_dig}
+    {.fixed_dig = 1, .len = NUM_DIG, .alloc = NUM_DIG, .dig = (mpz_dig_t*)maxsize_dig}
 };
 #undef DIG_MASK
+#undef NUM_DIG
 #endif
 
 STATIC mp_obj_int_t *mp_obj_int_new_mpz(void) {
@@ -134,7 +145,7 @@ mp_obj_t mp_obj_int_abs(mp_obj_t self_in) {
 mp_obj_t mp_obj_int_unary_op(mp_uint_t op, mp_obj_t o_in) {
     mp_obj_int_t *o = o_in;
     switch (op) {
-        case MP_UNARY_OP_BOOL: return MP_BOOL(!mpz_is_zero(&o->mpz));
+        case MP_UNARY_OP_BOOL: return mp_obj_new_bool(!mpz_is_zero(&o->mpz));
         case MP_UNARY_OP_HASH: return MP_OBJ_NEW_SMALL_INT(mpz_hash(&o->mpz));
         case MP_UNARY_OP_POSITIVE: return o_in;
         case MP_UNARY_OP_NEGATIVE: { mp_obj_int_t *o2 = mp_obj_int_new_mpz(); mpz_neg_inpl(&o2->mpz, &o->mpz); return o2; }
@@ -167,7 +178,7 @@ mp_obj_t mp_obj_int_binary_op(mp_uint_t op, mp_obj_t lhs_in, mp_obj_t rhs_in) {
     } else if (MP_OBJ_IS_TYPE(rhs_in, &mp_type_int)) {
         zrhs = &((mp_obj_int_t*)rhs_in)->mpz;
 #if MICROPY_PY_BUILTINS_FLOAT
-    } else if (MP_OBJ_IS_TYPE(rhs_in, &mp_type_float)) {
+    } else if (mp_obj_is_float(rhs_in)) {
         return mp_obj_float_binary_op(op, mpz_as_float(zlhs), rhs_in);
 #if MICROPY_PY_BUILTINS_COMPLEX
     } else if (MP_OBJ_IS_TYPE(rhs_in, &mp_type_complex)) {
@@ -182,6 +193,9 @@ mp_obj_t mp_obj_int_binary_op(mp_uint_t op, mp_obj_t lhs_in, mp_obj_t rhs_in) {
     if (0) {
 #if MICROPY_PY_BUILTINS_FLOAT
     } else if (op == MP_BINARY_OP_TRUE_DIVIDE || op == MP_BINARY_OP_INPLACE_TRUE_DIVIDE) {
+        if (mpz_is_zero(zrhs)) {
+            goto zero_division_error;
+        }
         mp_float_t flhs = mpz_as_float(zlhs);
         mp_float_t frhs = mpz_as_float(zrhs);
         return mp_obj_new_float(flhs / frhs);
@@ -205,6 +219,11 @@ mp_obj_t mp_obj_int_binary_op(mp_uint_t op, mp_obj_t lhs_in, mp_obj_t rhs_in) {
                 break;
             case MP_BINARY_OP_FLOOR_DIVIDE:
             case MP_BINARY_OP_INPLACE_FLOOR_DIVIDE: {
+                if (mpz_is_zero(zrhs)) {
+                    zero_division_error:
+                    nlr_raise(mp_obj_new_exception_msg(&mp_type_ZeroDivisionError,
+                        "division by zero"));
+                }
                 mpz_t rem; mpz_init_zero(&rem);
                 mpz_divmod_inpl(&res->mpz, &rem, zlhs, zrhs);
                 if (zlhs->neg != zrhs->neg) {
@@ -218,6 +237,9 @@ mp_obj_t mp_obj_int_binary_op(mp_uint_t op, mp_obj_t lhs_in, mp_obj_t rhs_in) {
             }
             case MP_BINARY_OP_MODULO:
             case MP_BINARY_OP_INPLACE_MODULO: {
+                if (mpz_is_zero(zrhs)) {
+                    goto zero_division_error;
+                }
                 mpz_t quo; mpz_init_zero(&quo);
                 mpz_divmod_inpl(&quo, &res->mpz, zlhs, zrhs);
                 mpz_deinit(&quo);
@@ -263,6 +285,9 @@ mp_obj_t mp_obj_int_binary_op(mp_uint_t op, mp_obj_t lhs_in, mp_obj_t rhs_in) {
                 break;
 
             case MP_BINARY_OP_DIVMOD: {
+                if (mpz_is_zero(zrhs)) {
+                    goto zero_division_error;
+                }
                 mp_obj_int_t *quo = mp_obj_int_new_mpz();
                 mpz_divmod_inpl(&quo->mpz, &res->mpz, zlhs, zrhs);
                 // Check signs and do Python style modulo
@@ -283,15 +308,15 @@ mp_obj_t mp_obj_int_binary_op(mp_uint_t op, mp_obj_t lhs_in, mp_obj_t rhs_in) {
         int cmp = mpz_cmp(zlhs, zrhs);
         switch (op) {
             case MP_BINARY_OP_LESS:
-                return MP_BOOL(cmp < 0);
+                return mp_obj_new_bool(cmp < 0);
             case MP_BINARY_OP_MORE:
-                return MP_BOOL(cmp > 0);
+                return mp_obj_new_bool(cmp > 0);
             case MP_BINARY_OP_LESS_EQUAL:
-                return MP_BOOL(cmp <= 0);
+                return mp_obj_new_bool(cmp <= 0);
             case MP_BINARY_OP_MORE_EQUAL:
-                return MP_BOOL(cmp >= 0);
+                return mp_obj_new_bool(cmp >= 0);
             case MP_BINARY_OP_EQUAL:
-                return MP_BOOL(cmp == 0);
+                return mp_obj_new_bool(cmp == 0);
 
             default:
                 return MP_OBJ_NULL; // op not supported

@@ -34,6 +34,7 @@
 #include "py/runtime.h"
 #include "py/stackctrl.h"
 #include "py/gc.h"
+#include "py/mphal.h"
 
 #include "lib/fatfs/ff.h"
 
@@ -60,7 +61,6 @@
 #include "dac.h"
 #include "can.h"
 #include "modnetwork.h"
-#include MICROPY_HAL_H
 
 void SystemClock_Config(void);
 
@@ -114,18 +114,28 @@ void MP_WEAK __assert_func(const char *file, int line, const char *func, const c
 }
 #endif
 
-STATIC mp_obj_t pyb_main(mp_obj_t main) {
-    if (MP_OBJ_IS_STR(main)) {
-        MP_STATE_PORT(pyb_config_main) = main;
+STATIC mp_obj_t pyb_main(mp_uint_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+    static const mp_arg_t allowed_args[] = {
+        { MP_QSTR_opt, MP_ARG_INT, {.u_int = 0} }
+    };
+
+    if (MP_OBJ_IS_STR(pos_args[0])) {
+        MP_STATE_PORT(pyb_config_main) = pos_args[0];
+
+        // parse args
+        mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
+        mp_arg_parse_all(n_args - 1, pos_args + 1, kw_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
+        MP_STATE_VM(mp_optimise_value) = args[0].u_int;
     }
     return mp_const_none;
 }
-MP_DEFINE_CONST_FUN_OBJ_1(pyb_main_obj, pyb_main);
+MP_DEFINE_CONST_FUN_OBJ_KW(pyb_main_obj, 1, pyb_main);
 
 static const char fresh_boot_py[] =
 "# boot.py -- run on boot-up\r\n"
 "# can run arbitrary Python, but best to keep it minimal\r\n"
 "\r\n"
+"import machine\r\n"
 "import pyb\r\n"
 "#pyb.main('main.py') # main script to run after this one\r\n"
 "#pyb.usb_mode('CDC+MSC') # act as a serial and a storage device\r\n"
@@ -141,7 +151,7 @@ static const char fresh_pybcdc_inf[] =
 ;
 
 static const char fresh_readme_txt[] =
-"This is a Micro Python board\r\n"
+"This is a MicroPython board\r\n"
 "\r\n"
 "You can get started right away by writing your Python code in 'main.py'.\r\n"
 "\r\n"

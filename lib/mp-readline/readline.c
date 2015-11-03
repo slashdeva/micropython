@@ -30,10 +30,8 @@
 
 #include "py/mpstate.h"
 #include "py/repl.h"
+#include "py/mphal.h"
 #include "readline.h"
-#ifdef MICROPY_HAL_H
-#include MICROPY_HAL_H
-#endif
 
 #if 0 // print debugging info
 #define DEBUG_PRINT (1)
@@ -82,7 +80,8 @@ STATIC void mp_hal_move_cursor_back(uint pos) {
     }
 }
 
-STATIC void mp_hal_erase_line_from_cursor(void) {
+STATIC void mp_hal_erase_line_from_cursor(uint n_chars_to_erase) {
+    (void)n_chars_to_erase;
     mp_hal_stdout_tx_strn("\x1b[K", 3);
 }
 #endif
@@ -105,7 +104,7 @@ int readline_process_char(int c) {
     bool redraw_from_cursor = false;
     int redraw_step_forward = 0;
     if (rl.escape_seq == ESEQ_NONE) {
-        if (CHAR_CTRL_A <= c && c <= CHAR_CTRL_D && vstr_len(rl.line) == rl.orig_line_len) {
+        if (CHAR_CTRL_A <= c && c <= CHAR_CTRL_E && vstr_len(rl.line) == rl.orig_line_len) {
             // control character with empty line
             return c;
         } else if (c == CHAR_CTRL_A) {
@@ -133,9 +132,9 @@ int readline_process_char(int c) {
             goto right_arrow_key;
         } else if (c == CHAR_CTRL_K) {
             // CTRL-K is kill from cursor to end-of-line, inclusive
-	    vstr_cut_tail_bytes(rl.line, last_line_len - rl.cursor_pos);
-	    // set redraw parameters
-	    redraw_from_cursor = true;
+            vstr_cut_tail_bytes(rl.line, last_line_len - rl.cursor_pos);
+            // set redraw parameters
+            redraw_from_cursor = true;
         } else if (c == CHAR_CTRL_N) {
             // CTRL-N is go to next line in history
             goto down_arrow_key;
@@ -144,10 +143,10 @@ int readline_process_char(int c) {
             goto up_arrow_key;
         } else if (c == CHAR_CTRL_U) {
             // CTRL-U is kill from beginning-of-line up to cursor
-	    vstr_cut_out_bytes(rl.line, rl.orig_line_len, rl.cursor_pos - rl.orig_line_len);
-	    // set redraw parameters
-	    redraw_step_back = rl.cursor_pos - rl.orig_line_len;
-	    redraw_from_cursor = true;
+            vstr_cut_out_bytes(rl.line, rl.orig_line_len, rl.cursor_pos - rl.orig_line_len);
+            // set redraw parameters
+            redraw_step_back = rl.cursor_pos - rl.orig_line_len;
+            redraw_from_cursor = true;
         #endif
         } else if (c == '\r') {
             // newline
@@ -160,9 +159,29 @@ int readline_process_char(int c) {
         } else if (c == 8 || c == 127) {
             // backspace/delete
             if (rl.cursor_pos > rl.orig_line_len) {
-                vstr_cut_out_bytes(rl.line, rl.cursor_pos - 1, 1);
+                // work out how many chars to backspace
+                #if MICROPY_REPL_AUTO_INDENT
+                int nspace = 0;
+                for (size_t i = rl.orig_line_len; i < rl.cursor_pos; i++) {
+                    if (rl.line->buf[i] != ' ') {
+                        nspace = 0;
+                        break;
+                    }
+                    nspace += 1;
+                }
+                if (nspace < 4) {
+                    nspace = 1;
+                } else {
+                    nspace = 4;
+                }
+                #else
+                int nspace = 1;
+                #endif
+
+                // do the backspace
+                vstr_cut_out_bytes(rl.line, rl.cursor_pos - nspace, nspace);
                 // set redraw parameters
-                redraw_step_back = 1;
+                redraw_step_back = nspace;
                 redraw_from_cursor = true;
             }
         #if MICROPY_HELPER_REPL
@@ -318,8 +337,7 @@ delete_key:
     if (redraw_from_cursor) {
         if (rl.line->len < last_line_len) {
             // erase old chars
-            // (number of chars to erase: last_line_len - rl.cursor_pos)
-            mp_hal_erase_line_from_cursor();
+            mp_hal_erase_line_from_cursor(last_line_len - rl.cursor_pos);
         }
         // draw new chars
         mp_hal_stdout_tx_strn(rl.line->buf + rl.cursor_pos, rl.line->len - rl.cursor_pos);
@@ -335,11 +353,44 @@ delete_key:
     return -1;
 }
 
+#if MICROPY_REPL_AUTO_INDENT
+STATIC void readline_auto_indent(void) {
+    vstr_t *line = rl.line;
+    if (line->len > 1 && line->buf[line->len - 1] == '\n') {
+        int i;
+        for (i = line->len - 1; i > 0; i--) {
+            if (line->buf[i - 1] == '\n') {
+                break;
+            }
+        }
+        size_t j;
+        for (j = i; j < line->len; j++) {
+            if (line->buf[j] != ' ') {
+                break;
+            }
+        }
+        // i=start of line; j=first non-space
+        int n = (j - i) / 4;
+        if (line->buf[line->len - 2] == ':') {
+            n += 1;
+        }
+        while (n-- > 0) {
+            vstr_add_strn(line, "    ", 4);
+            mp_hal_stdout_tx_strn("    ", 4);
+            rl.cursor_pos += 4;
+        }
+    }
+}
+#endif
+
 void readline_note_newline(const char *prompt) {
     rl.orig_line_len = rl.line->len;
     rl.cursor_pos = rl.orig_line_len;
     rl.prompt = prompt;
     mp_hal_stdout_tx_str(prompt);
+    #if MICROPY_REPL_AUTO_INDENT
+    readline_auto_indent();
+    #endif
 }
 
 void readline_init(vstr_t *line, const char *prompt) {
@@ -351,6 +402,9 @@ void readline_init(vstr_t *line, const char *prompt) {
     rl.cursor_pos = rl.orig_line_len;
     rl.prompt = prompt;
     mp_hal_stdout_tx_str(prompt);
+    #if MICROPY_REPL_AUTO_INDENT
+    readline_auto_indent();
+    #endif
 }
 
 int readline(vstr_t *line, const char *prompt) {

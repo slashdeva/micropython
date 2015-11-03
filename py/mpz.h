@@ -78,8 +78,9 @@ typedef int8_t mpz_dbl_dig_signed_t;
   #define MPZ_LONG_1 1L
 #endif
 
-#define MPZ_NUM_DIG_FOR_INT (sizeof(mp_int_t) * 8 / MPZ_DIG_SIZE + 1)
-#define MPZ_NUM_DIG_FOR_LL (sizeof(long long) * 8 / MPZ_DIG_SIZE + 1)
+// these define the maximum storage needed to hold an int or long long
+#define MPZ_NUM_DIG_FOR_INT ((sizeof(mp_int_t) * 8 + MPZ_DIG_SIZE - 1) / MPZ_DIG_SIZE)
+#define MPZ_NUM_DIG_FOR_LL ((sizeof(long long) * 8 + MPZ_DIG_SIZE - 1) / MPZ_DIG_SIZE)
 
 typedef struct _mpz_t {
     mp_uint_t neg : 1;
@@ -111,8 +112,8 @@ int mpz_cmp(const mpz_t *lhs, const mpz_t *rhs);
 void mpz_abs_inpl(mpz_t *dest, const mpz_t *z);
 void mpz_neg_inpl(mpz_t *dest, const mpz_t *z);
 void mpz_not_inpl(mpz_t *dest, const mpz_t *z);
-void mpz_shl_inpl(mpz_t *dest, const mpz_t *lhs, mp_int_t rhs);
-void mpz_shr_inpl(mpz_t *dest, const mpz_t *lhs, mp_int_t rhs);
+void mpz_shl_inpl(mpz_t *dest, const mpz_t *lhs, mp_uint_t rhs);
+void mpz_shr_inpl(mpz_t *dest, const mpz_t *lhs, mp_uint_t rhs);
 void mpz_add_inpl(mpz_t *dest, const mpz_t *lhs, const mpz_t *rhs);
 void mpz_sub_inpl(mpz_t *dest, const mpz_t *lhs, const mpz_t *rhs);
 void mpz_mul_inpl(mpz_t *dest, const mpz_t *lhs, const mpz_t *rhs);

@@ -36,6 +36,9 @@ Q(flush)
 
 Q(_os)
 Q(stat)
+#if MICROPY_PY_OS_STATVFS
+Q(statvfs)
+#endif
 Q(system)
 Q(unlink)
 
@@ -57,6 +60,11 @@ Q(utime)
 Q(time)
 Q(clock)
 Q(sleep)
+Q(sleep_ms)
+Q(sleep_us)
+Q(ticks_ms)
+Q(ticks_us)
+Q(ticks_diff)
 
 Q(socket)
 Q(sockaddr_in)
@@ -101,4 +109,13 @@ Q(TCSANOW)
 Q(B9600)
 Q(B57600)
 Q(B115200)
+#endif
+
+#if MICROPY_PY_JNI
+Q(jni)
+Q(cls)
+Q(env)
+Q(jclass)
+Q(jobject)
+Q(jmethod)
 #endif

@@ -63,24 +63,6 @@ Usage Model:
     that pin has an effective 40k Ohm resistor pulling it to 3V3 or GND
     respectively (except pin Y5 which has 11k Ohm resistors).
 
-.. only:: port_wipy
-
-    Board pins are identified by their string name::
-
-        g = pyb.Pin('GP9', af=0, mode=pyb.Pin.IN, type=pyb.Pin.STD, strength=pyb.Pin.S2MA)
-
-    You can also configure the Pin to generate interrupts. For instance::
-
-        def pincb(pin):
-            print(pin.name())
-
-        pin_int = pyb.Pin('GP10', af=0, mode=Pin.IN, type=pyb.Pin.STD_PD, strength=pyb.Pin.S2MA)
-        pin_int.callback (mode=pyb.Pin.INT_RISING, handler=pincb)
-        # the callback can be triggered manually
-        pin_int.callback()()
-        # to disable the callback
-        pin_int.callback().disable()
-
     Now every time a falling edge is seen on the gpio pin, the callback will be
     executed. Caution: mechanical push buttons have "bounce" and pushing or
     releasing a switch will often generate multiple edges.
@@ -93,19 +75,10 @@ Usage Model:
 Constructors
 ------------
 
-.. only:: port_pyboard
+.. class:: pyb.Pin(id, ...)
 
-   .. class:: pyb.Pin(id, ...)
-
-      Create a new Pin object associated with the id.  If additional arguments are given,
-      they are used to initialise the pin.  See :meth:`pin.init`.
-
-.. only:: port_wipy
-
-   .. class:: pyb.Pin(name, ...)
-
-      Create a new Pin object associated with the name.  If additional arguments are given,
-      they are used to initialise the pin.  See :meth:`pin.init`.
+   Create a new Pin object associated with the id.  If additional arguments are given,
+   they are used to initialise the pin.  See :meth:`pin.init`.
 
 .. only:: port_pyboard
 
@@ -158,46 +131,6 @@ Methods
        
        Returns: ``None``.
 
-.. only:: port_wipy
-
-    .. method:: pin.init(af, mode, type, strength)
-    
-       Initialise the pin:
-       
-         - ``af`` is the number of the alternate function. Please refer to the
-           `pinout and alternate functions table. <https://raw.githubusercontent.com/wipy/wipy/master/docs/PinOUT.png>`_
-           for the specific alternate functions that each pin supports.
-
-         - ``mode`` can be one of:
-
-            - ``Pin.OUT`` - no pull up or down resistors.
-            - ``Pin.IN``  - enable the pull-up resistor.
-
-         - ``type`` can be one of:
-
-            - ``Pin.STD``    - push-pull pin.
-            - ``Pin.STD_PU`` - push-pull pin with pull-up resistor.
-            - ``Pin.STD_PD`` - push-pull pin with pull-down resistor.
-            - ``Pin.OD``     - open drain pin.
-            - ``Pin.OD_PU``  - open drain pin with pull-up resistor.
-            - ``Pin.OD_PD``  - open drain pin with pull-down resistor.
-
-         - ``strength`` can be one of:
-
-            - ``Pin.S2MA`` - 2mA drive capability.
-            - ``Pin.S4MA`` - 4mA drive capability.
-            - ``Pin.S6MA`` - 6mA drive capability.
-
-       Returns: ``None``.
-
-.. method:: pin.high()
-
-   Set the pin to a high logic level.
-
-.. method:: pin.low()
-
-   Set the pin to a low logic level.
-
 .. method:: pin.value([value])
 
    Get or set the digital logic level of the pin:
@@ -229,11 +162,9 @@ Methods
        will match one of the allowed constants for the mode argument to the init
        function.
     
-.. method:: pin.name()
+    .. method:: pin.name()
 
-   Get the pin name.
-
-.. only:: port_pyboard
+       Get the pin name.
 
     .. method:: pin.names()
     
@@ -247,59 +178,11 @@ Methods
     
        Get the pin port.
     
-    .. method:: pin.pull()
-    
-       Returns the currently configured pull of the pin. The integer returned
-       will match one of the allowed constants for the pull argument to the init
-       function.
+.. method:: pin.pull()
 
-.. only:: port_wipy
-
-    .. method:: pin.toggle()
-
-        Toggle the value of the pin.
-
-    .. method:: pin.info()
-
-        Return a 5-tuple with the configuration of the pin:
-        ``(name, alternate-function, mode, type, strength)``
-
-        .. warning:: 
-            This method cannot be called within a callback (interrupt-context)
-            because it needs to allocate memory to return the tuple and memory
-            allocations are disabled while interrupts are being serviced.
-
-    .. method:: pin.callback(\*, mode, priority=1, handler=None, wakes=pyb.Sleep.ACTIVE)
-
-        Create a callback to be triggered when the input level at the pin changes.
-
-            - ``mode`` configures the pin level which can generate an interrupt. Possible values are:
-
-                - ``Pin.INT_FALLING`` interrupt on falling edge.
-                - ``Pin.INT_RISING`` interrupt on rising edge.
-                - ``Pin.INT_RISING_FALLING`` interrupt on rising and falling edge.
-                - ``Pin.INT_LOW_LEVEL`` interrupt on low level.
-                - ``Pin.INT_HIGH_LEVEL`` interrupt on high level.
-
-            - ``priority`` level of the interrupt. Can take values in the range 1-7.
-              Higher values represent higher priorities.
-            - ``handler`` is an optional function to be called when new characters arrive.
-            - ``wake_from`` selects the power mode in which this interrupt can wake up the
-              board. Please note:
-
-              - If ``wake_from=pyb.Sleep.ACTIVE`` any pin can wake the board.
-              - If ``wake_from=pyb.Sleep.SUSPENDED`` pins ``GP2``, ``GP4``, ``GP10``,
-                ``GP11``, GP17`` or ``GP24`` can wake the board. Note that only 1
-                of this pins can be enabled as a wake source at the same time, so, only
-                the last enabled pin as a ``pyb.Sleep.SUSPENDED`` wake source will have effect.
-              - If ``wake_from=pyb.Sleep.SUSPENDED`` pins ``GP2``, ``GP4``, ``GP10``,
-                ``GP11``, ``GP17`` and ``GP24`` can wake the board. In this case all of the
-                6 pins can be enabled as a ``pyb.Sleep.HIBERNATE`` wake source at the same time.
-              - Values can be ORed to make a pin generate interrupts in more than one power
-                mode.
-
-            Returns a callback object.
-
+    Returns the currently configured pull of the pin. The integer returned
+    will match one of the allowed constants for the pull argument to the init
+    function.
 
 Constants
 ---------
@@ -341,72 +224,6 @@ Constants
     .. data:: Pin.PULL_UP
     
        enable the pull-up resistor on the pin
-
-.. only:: port_wipy
-
-    .. data:: Pin.IN
-    
-       input pin mode
-     
-    .. data:: Pin.OUT
-    
-       output pin mode
-    
-    .. data:: Pin.STD
-    
-       push-pull pin type
-    
-    .. data:: Pin.STD_PU
-    
-       push-pull pin with internall pull-up resistor
-    
-    .. data:: Pin.STD_PD
-    
-       push-pull pin with internall pull-down resistor
-    
-    .. data:: Pin.OD
-    
-       open-drain pin
-    
-    .. data:: Pin.OD_PU
-    
-       open-drain pin with pull-up resistor
-    
-    .. data:: Pin.OD_PD
-    
-       open-drain pin with pull-down resistor
-    
-    .. data:: Pin.INT_FALLING
-    
-       interrupt on falling edge
-    
-    .. data:: Pin.INT_RISING
-    
-       interrupt on rising edge
-    
-    .. data:: Pin.INT_RISING_FALLING
-    
-       interrupt on rising and falling edge
-    
-    .. data:: Pin.INT_LOW_LEVEL
-    
-       interrupt on low level
-    
-    .. data:: Pin.INT_HIGH_LEVEL
-    
-       interrupt on high level
-    
-    .. data:: Pin.S2MA
-    
-       2mA drive strength
-    
-    .. data:: Pin.S4MA
-    
-       4mA drive strength
-    
-    .. data:: Pin.S6MA 
-    
-       6mA drive strength
 
 .. only:: port_pyboard
 

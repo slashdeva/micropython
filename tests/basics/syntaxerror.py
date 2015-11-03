@@ -77,16 +77,11 @@ test_syntax("return")
 test_syntax("yield")
 test_syntax("nonlocal a")
 
-# errors on uPy but shouldn't
-#test_syntax("global a; global a")
+# error on uPy, warning on CPy
 #test_syntax("def f():\n a = 1\n global a")
 
 # default except must be last
 test_syntax("try:\n a\nexcept:\n pass\nexcept:\n pass")
-
-# can't have multiple * or **
-test_syntax("f(*a, *b)")
-test_syntax("f(**a, **b)")
 
 # LHS of keywords must be id's
 test_syntax("f(1=2)")
@@ -109,3 +104,12 @@ test_syntax("def f(a, a): pass")
 
 # nonlocal must exist in outer function/class scope
 test_syntax("def f():\n def g():\n  nonlocal a")
+
+# param can't be redefined as global
+test_syntax('def f(x):\n global x')
+
+# param can't be redefined as nonlocal
+test_syntax('def f(x):\n nonlocal x')
+
+# can define variable to be both nonlocal and global
+test_syntax('def f():\n nonlocal x\n global x')

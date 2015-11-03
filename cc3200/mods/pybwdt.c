@@ -27,9 +27,9 @@
 #include <stdint.h>
 
 #include "py/mpconfig.h"
-#include MICROPY_HAL_H
 #include "py/obj.h"
 #include "py/runtime.h"
+#include "py/mphal.h"
 #include "inc/hw_types.h"
 #include "inc/hw_gpio.h"
 #include "inc/hw_ints.h"
@@ -53,17 +53,17 @@
  DECLARE TYPES
  ******************************************************************************/
 typedef struct {
+    mp_obj_base_t base;
     bool    servers;
     bool    servers_sleeping;
     bool    simplelink;
     bool    running;
-} pybwdt_data_t;
+} pyb_wdt_obj_t;
 
 /******************************************************************************
  DECLARE PRIVATE DATA
  ******************************************************************************/
-STATIC pybwdt_data_t   pybwdt_data = {.servers = false, .servers_sleeping = false, .simplelink = false, .running = false};
-STATIC const mp_obj_base_t pyb_wdt_obj = {&pyb_wdt_type};
+STATIC pyb_wdt_obj_t pyb_wdt_obj = {.servers = false, .servers_sleeping = false, .simplelink = false, .running = false};
 
 /******************************************************************************
  DEFINE PUBLIC FUNCTIONS
@@ -74,73 +74,79 @@ void pybwdt_init0 (void) {
 }
 
 void pybwdt_srv_alive (void) {
-    pybwdt_data.servers = true;
+    pyb_wdt_obj.servers = true;
 }
 
 void pybwdt_srv_sleeping (bool state) {
-    pybwdt_data.servers_sleeping = state;
+    pyb_wdt_obj.servers_sleeping = state;
 }
 
 void pybwdt_sl_alive (void) {
-    pybwdt_data.simplelink = true;
+    pyb_wdt_obj.simplelink = true;
 }
 
 /******************************************************************************/
 // Micro Python bindings
 
-/// \function constructor('msec')
-/// Enables the watchdog timer with msec timeout value
-STATIC mp_obj_t pyb_wdt_make_new (mp_obj_t type_in, mp_uint_t n_args, mp_uint_t n_kw, const mp_obj_t *args) {
+STATIC const mp_arg_t pyb_wdt_init_args[] = {
+    { MP_QSTR_id,                             MP_ARG_OBJ,  {.u_obj = mp_const_none} },
+    { MP_QSTR_timeout,                        MP_ARG_INT,  {.u_int = 5000} },   // 5 s
+};
+STATIC mp_obj_t pyb_wdt_make_new (mp_obj_t type_in, mp_uint_t n_args, mp_uint_t n_kw, const mp_obj_t *all_args) {
     // check the arguments
-    mp_arg_check_num(n_args, n_kw, 0, 1, false);
+    mp_map_t kw_args;
+    mp_map_init_fixed_table(&kw_args, n_kw, all_args + n_args);
+    mp_arg_val_t args[MP_ARRAY_SIZE(pyb_wdt_init_args)];
+    mp_arg_parse_all(n_args, all_args, &kw_args, MP_ARRAY_SIZE(args), pyb_wdt_init_args, args);
 
-    if (n_args > 0) {
-        mp_int_t msec = mp_obj_get_int(args[0]);
-        if (msec < PYBWDT_MIN_TIMEOUT_MS) {
-            nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, mpexception_value_invalid_arguments));
-        }
-        if (pybwdt_data.running) {
-            nlr_raise(mp_obj_new_exception_msg(&mp_type_OSError, mpexception_os_request_not_possible));
-        }
-
-        // Enable the WDT peripheral clock
-        MAP_PRCMPeripheralClkEnable(PRCM_WDT, PRCM_RUN_MODE_CLK | PRCM_SLP_MODE_CLK);
-
-        // Unlock to be able to configure the registers
-        MAP_WatchdogUnlock(WDT_BASE);
-
-    #ifdef DEBUG
-        // make the WDT stall when the debugger stops on a breakpoint
-        MAP_WatchdogStallEnable (WDT_BASE);
-    #endif
-
-        // set the watchdog timer reload value
-        // the WDT trigger a system reset after the second timeout
-        // so, divide by 2 the timeout value received
-        MAP_WatchdogReloadSet(WDT_BASE, PYBWDT_MILLISECONDS_TO_TICKS(msec / 2));
-
-        // start the timer. Once it's started, it cannot be disabled.
-        MAP_WatchdogEnable(WDT_BASE);
-        pybwdt_data.running = true;
+    if (args[0].u_obj != mp_const_none && mp_obj_get_int(args[0].u_obj) > 0) {
+        nlr_raise(mp_obj_new_exception_msg(&mp_type_OSError, mpexception_os_resource_not_avaliable));
     }
+    uint timeout_ms = args[1].u_int;
+    if (timeout_ms < PYBWDT_MIN_TIMEOUT_MS) {
+        nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, mpexception_value_invalid_arguments));
+    }
+    if (pyb_wdt_obj.running) {
+        nlr_raise(mp_obj_new_exception_msg(&mp_type_OSError, mpexception_os_request_not_possible));
+    }
+
+    // Enable the WDT peripheral clock
+    MAP_PRCMPeripheralClkEnable(PRCM_WDT, PRCM_RUN_MODE_CLK | PRCM_SLP_MODE_CLK);
+
+    // Unlock to be able to configure the registers
+    MAP_WatchdogUnlock(WDT_BASE);
+
+#ifdef DEBUG
+    // make the WDT stall when the debugger stops on a breakpoint
+    MAP_WatchdogStallEnable (WDT_BASE);
+#endif
+
+    // set the watchdog timer reload value
+    // the WDT trigger a system reset after the second timeout
+    // so, divide by 2 the timeout value received
+    MAP_WatchdogReloadSet(WDT_BASE, PYBWDT_MILLISECONDS_TO_TICKS(timeout_ms / 2));
+
+    // start the timer. Once it's started, it cannot be disabled.
+    MAP_WatchdogEnable(WDT_BASE);
+    pyb_wdt_obj.base.type = &pyb_wdt_type;
+    pyb_wdt_obj.running = true;
 
     return (mp_obj_t)&pyb_wdt_obj;
 }
 
-/// \function wdt.kick()
-/// Kicks the watchdog timer
-STATIC mp_obj_t pyb_wdt_kick(mp_obj_t self) {
-    if ((pybwdt_data.servers || pybwdt_data.servers_sleeping) && pybwdt_data.simplelink && pybwdt_data.running) {
-        pybwdt_data.servers = false;
-        pybwdt_data.simplelink = false;
+STATIC mp_obj_t pyb_wdt_feed(mp_obj_t self_in) {
+    pyb_wdt_obj_t *self = self_in;
+    if ((self->servers || self->servers_sleeping) && self->simplelink && self->running) {
+        self->servers = false;
+        self->simplelink = false;
         MAP_WatchdogIntClear(WDT_BASE);
     }
     return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(pyb_wdt_kick_obj, pyb_wdt_kick);
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(pyb_wdt_feed_obj, pyb_wdt_feed);
 
 STATIC const mp_map_elem_t pybwdt_locals_dict_table[] = {
-    { MP_OBJ_NEW_QSTR(MP_QSTR_kick),   (mp_obj_t)&pyb_wdt_kick_obj },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_feed),   (mp_obj_t)&pyb_wdt_feed_obj },
 };
 STATIC MP_DEFINE_CONST_DICT(pybwdt_locals_dict, pybwdt_locals_dict_table);
 
