@@ -37,3 +37,12 @@ __pycache__/
 ######################
 GNUmakefile
 user.props
+
+#Emacs Backup Files
+######################
+\#*\#
+*~
+
+#Emacs TAG TABLE
+######################
+TAGS
